@@ -218,7 +218,7 @@ def generate_unique_token():
 
 # API endpointy
 
-@app.get("/docs", include_in_schema=False)
+@app.get("/api/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
     return get_swagger_ui_html(
         openapi_url=app.openapi_url,
@@ -229,7 +229,7 @@ async def custom_swagger_ui_html():
     )
 
 
-@app.post("/products/", response_model=Product, tags=["Products"])
+@app.post("/api/products/", response_model=Product, tags=["Products"])
 async def create_product(product: Product, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     db_product = ProductDB(**product.dict())
     db.add(db_product)
@@ -238,7 +238,7 @@ async def create_product(product: Product, db: SessionLocal = Depends(get_db), a
     return db_product
 
 
-@app.get("/products/", response_model=List[Product], tags=["Products"])
+@app.get("/api/products/", response_model=List[Product], tags=["Products"])
 async def list_products(skip: int = 0, limit: int = 10, category: Optional[str] = None,
                         db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     query = db.query(ProductDB)
@@ -247,13 +247,13 @@ async def list_products(skip: int = 0, limit: int = 10, category: Optional[str] 
     return query.offset(skip).limit(limit).all()
 
 
-@app.get("/products/{product_id}", response_model=Product, tags=["Products"])
+@app.get("/api/products/{product_id}", response_model=Product, tags=["Products"])
 async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db),
                              api_key: APIKey = Depends(get_api_key)):
     return get_product(product_id, db)
 
 
-@app.put("/products/{product_id}", response_model=Product, tags=["Products"])
+@app.put("/api/products/{product_id}", response_model=Product, tags=["Products"])
 async def update_product(product_id: str, product: Product, db: SessionLocal = Depends(get_db),
                          api_key: APIKey = Depends(get_api_key)):
     db_product = get_product(product_id, db)
@@ -264,7 +264,7 @@ async def update_product(product_id: str, product: Product, db: SessionLocal = D
     return db_product
 
 
-@app.post("/users/register", response_model=User, tags=["Users"])
+@app.post("/api/users/register", response_model=User, tags=["Users"])
 async def create_user(user: User, db: SessionLocal = Depends(get_db)):
     token = generate_unique_token()
 
@@ -289,12 +289,12 @@ async def create_user(user: User, db: SessionLocal = Depends(get_db)):
     )
 
 
-@app.get("/users/{user_id}", response_model=User, tags=["Users"])
+@app.get("/api/users/{user_id}", response_model=User, tags=["Users"])
 async def get_user_detail(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     return get_user(user_id, db)
 
 
-@app.post("/orders/", response_model=Order, tags=["Orders"])
+@app.post("/api/orders/", response_model=Order, tags=["Orders"])
 async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     db_order = OrderDB(
         id=order.id,
@@ -318,7 +318,7 @@ async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key
     )
 
 
-@app.get("/orders/{order_id}", response_model=Order, tags=["Orders"])
+@app.get("/api/orders/{order_id}", response_model=Order, tags=["Orders"])
 async def get_order_detail(order_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     order = db.query(OrderDB).filter(OrderDB.id == order_id).first()
     if order is None:
@@ -333,7 +333,7 @@ async def get_order_detail(order_id: str, db: SessionLocal = Depends(get_db), ap
     )
 
 
-@app.get("/users/{user_id}/orders/", response_model=List[Order], tags=["Orders"])
+@app.get("/api/users/{user_id}/orders/", response_model=List[Order], tags=["Orders"])
 async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     get_user(user_id, db)  # Ověření existence uživatele
     orders = db.query(OrderDB).filter(OrderDB.user_id == user_id).all()
@@ -347,14 +347,14 @@ async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api
     ) for order in orders]
 
 
-@app.get("/search/", response_model=List[Product], tags=["Default"])
+@app.get("/api/search/", response_model=List[Product], tags=["Default"])
 async def search_products(query: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     return db.query(ProductDB).filter(
         (ProductDB.name.ilike(f"%{query}%")) | (ProductDB.description.ilike(f"%{query}%"))
     ).all()
 
 
-@app.patch("/products/{product_id}/stock", tags=["Products"])
+@app.patch("/api/products/{product_id}/stock", tags=["Products"])
 async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depends(get_db),
                        api_key: APIKey = Depends(get_api_key)):
     product = get_product(product_id, db)
@@ -365,12 +365,12 @@ async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depend
     return {"message": "Stav skladu aktualizován", "new_stock": product.stock}
 
 
-@app.get("/categories/", tags=["Default"])
+@app.get("/api/categories/", tags=["Default"])
 async def list_categories(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
     return [category[0] for category in db.query(ProductDB.category).distinct()]
 
 
-@app.get("/logs", response_model=List[dict], tags=["Other"])
+@app.get("/api/logs", response_model=List[dict], tags=["Other"])
 async def get_logs(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key), limit: int = 100):
     logs = db.query(APILog).order_by(APILog.timestamp.desc()).limit(limit).all()
     return [
@@ -386,8 +386,8 @@ async def get_logs(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends
     ]
 
 
-@app.get("/test-api-key-hash", tags=["Test"])
-async def test_api_key_hash(request: Request, db: SessionLocal = Depends(get_db)):
+@app.get("/api/test-api/test-api-key-hash", tags=["Test"])
+async def test_api_key_hash(request: Request, db: SessionLocal = Depends(get_db),  api_key: APIKey = Depends(get_api_key)):
     api_key = request.headers.get(API_KEY_NAME)
     hashed_key = hash_api_key(api_key)
 
