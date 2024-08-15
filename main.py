@@ -1,6 +1,9 @@
-﻿from fastapi import FastAPI, HTTPException, Depends, status, Security, Request
+﻿from enum import unique
+
+from fastapi import FastAPI, HTTPException, Depends, status, Security, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.security.api_key import APIKeyHeader, APIKey
+from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Table, DateTime, Boolean
 from sqlalchemy.ext.declarative import declarative_base
@@ -10,6 +13,7 @@ from typing import List, Optional
 from datetime import datetime
 import uuid
 import hashlib
+import secrets
 
 # Konfigurace API klíče
 API_KEY = "your-secret-api-key"  # V reálné aplikaci by toto bylo bezpečně uloženo, např. v proměnných prostředí
@@ -49,6 +53,7 @@ class UserDB(Base):
     username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
     full_name = Column(String)
+    token = Column(String, unique=True, index=True)
 
 
 class OrderDB(Base):
@@ -101,6 +106,7 @@ class User(BaseModel):
     username: str
     email: str
     full_name: str
+    token: Optional[str] = None
 
     class Config:
         orm_mode = True
@@ -207,6 +213,8 @@ def get_user(user_id: str, db: SessionLocal):
         raise HTTPException(status_code=404, detail="Uživatel nenalezen")
     return user
 
+def generate_unique_token():
+    return secrets.token_urlsafe(32)
 
 # API endpointy
 
@@ -256,13 +264,29 @@ async def update_product(product_id: str, product: Product, db: SessionLocal = D
     return db_product
 
 
-@app.post("/users/", response_model=User, tags=["Users"])
-async def create_user(user: User, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    db_user = UserDB(**user.dict())
+@app.post("/users/register", response_model=User, tags=["Users"])
+async def create_user(user: User, db: SessionLocal = Depends(get_db)):
+    token = generate_unique_token()
+
+    user_data = user.dict()
+    user_data['token'] = token  # Přidání tokenu do slovníku
+
+    db_user = UserDB(**user_data)
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    try:
+        db.commit()
+        db.refresh(db_user)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Uživatel s tímto jménem nebo emailem již existuje")
+
+    return User(
+        id=db_user.id,
+        username=db_user.username,
+        email=db_user.email,
+        full_name=db_user.full_name,
+        token=db_user.token  # Přidání tokenu do odpovědi
+    )
 
 
 @app.get("/users/{user_id}", response_model=User, tags=["Users"])
