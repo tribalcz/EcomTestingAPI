@@ -34,9 +34,12 @@ order_products = Table('order_products', Base.metadata,
                        Column('product_id', String, ForeignKey('products.id'))
                        )
 
+class TimestampMixin:
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # Definice modelů SQLAlchemy
-class ProductDB(Base):
+class ProductDB(Base, TimestampMixin):
     __tablename__ = "products"
 
     id = Column(String, primary_key=True, index=True)
@@ -45,9 +48,9 @@ class ProductDB(Base):
     price = Column(Float)
     stock = Column(Integer)
     category = Column(String)
+    is_available = Column(Boolean, default=True)
 
-
-class UserDB(Base):
+class UserDB(Base, TimestampMixin):
     __tablename__ = "users"
 
     id = Column(String, primary_key=True, index=True)
@@ -55,16 +58,17 @@ class UserDB(Base):
     email = Column(String, unique=True, index=True)
     full_name = Column(String)
     token = Column(String, unique=True, index=True)
+    is_activated = Column(Boolean, default=True)
 
 
-class OrderDB(Base):
+
+class OrderDB(Base, TimestampMixin):
     __tablename__ = "orders"
 
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
     total_price = Column(Float)
     status = Column(String)
-    created_at = Column(DateTime)
 
     user = relationship("UserDB")
     products = relationship("ProductDB", secondary=order_products)
