@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI, HTTPException, Depends, status, Security, Request
+﻿from fastapi import FastAPI, HTTPException, Depends, status, Security, Request, Query
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from sqlalchemy.exc import IntegrityError
@@ -103,6 +103,7 @@ Base.metadata.create_all(bind=engine)
 
 
 # Pydantic modely pro API
+# Model pro vytvoření produktu
 class Product(BaseModel):
     id: str
     name: str
@@ -114,7 +115,17 @@ class Product(BaseModel):
     class Config:
         orm_mode = True
 
+# Model pro seznam produktů
+class ProductList(BaseModel):
+    total: int
+    products: List[Product]
+    skip: int
+    limit: int
 
+    class Config:
+        orm_mode = True
+
+# Model pro uživatele
 class User(BaseModel):
     id: str
     username: str
@@ -125,7 +136,7 @@ class User(BaseModel):
     class Config:
         orm_mode = True
 
-
+# Model pro objednávku
 class Order(BaseModel):
     id: str
     user_id: str
@@ -253,13 +264,33 @@ async def create_product(product: Product, db: SessionLocal = Depends(get_db), a
     return db_product
 
 
-@app.get("/api/products/", response_model=List[Product], tags=["Products"])
-async def list_products(skip: int = 0, limit: int = 10, category: Optional[str] = None,
-                        db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    query = db.query(ProductDB)
-    if category:
-        query = query.filter(ProductDB.category == category)
-    return query.offset(skip).limit(limit).all()
+@app.get("/api/products/", response_model=ProductList, tags=["Products"])
+async def list_products(
+        skip: int = Query(0, ge=0),
+        limit: int = Query(10, ge=1, le=100),
+        category: Optional[str] = None,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)):
+    logger.info(f"Listing products with skip={skip}, limit={limit}, category={category}")
+    try:
+        query = db.query(ProductDB)
+        if category:
+            query = query.filter(ProductDB.category == category)
+
+        total = query.count()
+        products = query.offset(skip).limit(limit).all()
+
+        logger.info(f"Found {len(products)} products")
+        return {
+            "total": total,
+            "products": products,
+            "skip": skip,
+            "limit": limit
+        }
+    except Exception as e:
+        logger.error(f"Error listing products: {str(e)}")
+        raise HTTPException(status_code=500, detail="Chyba při získávání produktů")
+
 
 
 @app.get("/api/products/{product_id}", response_model=Product, tags=["Products"])
@@ -365,7 +396,6 @@ async def get_order_detail(order_id: str, db: SessionLocal = Depends(get_db), ap
         status=order.status,
         created_at=order.created_at
     )
-
 
 @app.get("/api/users/{user_id}/orders/", response_model=List[Order], tags=["Orders"])
 async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
