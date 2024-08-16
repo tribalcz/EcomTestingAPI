@@ -14,6 +14,7 @@ from datetime import datetime
 import uuid
 import hashlib
 import secrets
+import logging
 
 # Konfigurace API klíče
 API_KEY = "your-secret-api-key"  # V reálné aplikaci by toto bylo bezpečně uloženo, např. v proměnných prostředí
@@ -131,6 +132,7 @@ app = FastAPI(
     openapi_tags=[
     ]
 )
+logger = logging.getLogger(__name__)
 
 # Metoda pro hashování API klíče pro účly logování
 def hash_api_key(api_key: str) -> str:
@@ -296,26 +298,45 @@ async def get_user_detail(user_id: str, db: SessionLocal = Depends(get_db), api_
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
 async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    db_order = OrderDB(
-        id=order.id,
-        user_id=order.user_id,
-        total_price=order.total_price,
-        status=order.status,
-        created_at=datetime.now()
-    )
-    db_products = db.query(ProductDB).filter(ProductDB.id.in_(order.products)).all()
-    db_order.products = db_products
-    db.add(db_order)
-    db.commit()
-    db.refresh(db_order)
-    return Order(
-        id=db_order.id,
-        user_id=db_order.user_id,
-        products=[p.id for p in db_order.products],
-        total_price=db_order.total_price,
-        status=db_order.status,
-        created_at=db_order.created_at
-    )
+    logger.info(f"Received order data: {order.dict()}")
+    try:
+        # Vytvoříme objekt objednávky
+        db_order = OrderDB(
+            id=order.id,
+            user_id=order.user_id,
+            total_price=order.total_price,
+            status=order.status,
+            created_at=datetime.now()
+        )
+
+        # Načteme produkty z databáze podle ID
+        db_products = db.query(ProductDB).filter(ProductDB.id.in_(order.products)).all()
+        if not db_products:
+            raise HTTPException(status_code=404, detail="Žádné produkty nebyly nalezeny pro daná ID")
+
+        logger.info(f"Found {len(db_products)} products for order")
+
+        # Přidáme produkty do objednávky pomocí extend nebo append
+        db_order.products.extend(db_products)
+
+        # Přidáme objednávku do databáze
+        db.add(db_order)
+        db.commit()
+        db.refresh(db_order)
+
+        logger.info(f"Order created successfully: {db_order.id}")
+        return Order(
+            id=db_order.id,
+            user_id=db_order.user_id,
+            products=[p.id for p in db_order.products],
+            total_price=db_order.total_price,
+            status=db_order.status,
+            created_at=db_order.created_at
+        )
+    except Exception as e:
+        logger.error(f"Error creating order: {str(e)}")
+        db.rollback()  # Vrácení transakce v případě chyby
+        raise HTTPException(status_code=500, detail="Chyba při vytváření objednávky")
 
 
 @app.get("/api/orders/{order_id}", response_model=Order, tags=["Orders"])
