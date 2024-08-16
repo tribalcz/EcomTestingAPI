@@ -6,11 +6,13 @@ from fastapi.security.api_key import APIKeyHeader, APIKey
 from sqlalchemy.exc import IntegrityError
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Table, DateTime, Boolean
+from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, lazyload
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+from enum import Enum
 import uuid
 import hashlib
 import secrets
@@ -34,6 +36,15 @@ order_products = Table('order_products', Base.metadata,
                        Column('product_id', String, ForeignKey('products.id'))
                        )
 
+# Enum pro stav objednávky
+class OrderStatus(str, Enum):
+    NEW = "new"
+    PROCESSING = "processing"
+    SHIPPED = "shipped"
+    DELIVERED = "delivered"
+    CANCELLED = "cancelled"
+
+# Mixin pro timestampy
 class TimestampMixin:
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -68,7 +79,7 @@ class OrderDB(Base, TimestampMixin):
     id = Column(String, primary_key=True, index=True)
     user_id = Column(String, ForeignKey("users.id"))
     total_price = Column(Float)
-    status = Column(String)
+    status = Column(SQLAlchemyEnum(OrderStatus), default=OrderStatus.NEW)
 
     user = relationship("UserDB")
     products = relationship("ProductDB", secondary=order_products)
@@ -122,7 +133,7 @@ class Order(BaseModel):
     user_id: str
     products: List[str]
     total_price: float
-    status: str
+    status: OrderStatus = Field(..., description="Status objednávky")
     created_at: datetime
 
     class Config:
