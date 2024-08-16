@@ -1,13 +1,13 @@
 ﻿from fastapi import FastAPI, HTTPException, Depends, status, Security, Request, Query
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.security.api_key import APIKeyHeader, APIKey
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Table, DateTime, Boolean
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
@@ -111,9 +111,9 @@ class Product(BaseModel):
     price: float
     stock: int
     category: str
+    is_available: Optional[bool] = True
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Model pro seznam produktů
 class ProductList(BaseModel):
@@ -122,8 +122,7 @@ class ProductList(BaseModel):
     skip: int
     limit: int
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Model pro uživatele
 class User(BaseModel):
@@ -133,8 +132,7 @@ class User(BaseModel):
     full_name: str
     token: Optional[str] = None
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Model pro objednávku
 class Order(BaseModel):
@@ -145,8 +143,7 @@ class Order(BaseModel):
     status: OrderStatus = Field(..., description="Status objednávky")
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 app = FastAPI(
@@ -257,11 +254,22 @@ async def custom_swagger_ui_html():
 
 @app.post("/api/products/", response_model=Product, tags=["Products"])
 async def create_product(product: Product, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    db_product = ProductDB(**product.dict())
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    return db_product
+    logger.info(f"Attempting to create product: {product.name}")
+    try:
+        db_product = ProductDB(**product.dict())
+        db.add(db_product)
+        db.commit()
+        db.refresh(db_product)
+        logger.info(f"Product created successfully: {db_product.id}")
+        return db_product
+    except SQLAlchemyError as e:
+        logger.error(f"Database error occurred while creating product: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while creating product: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/products/", response_model=ProductList, tags=["Products"])
@@ -278,15 +286,17 @@ async def list_products(
             query = query.filter(ProductDB.category == category)
 
         total = query.count()
-        products = query.offset(skip).limit(limit).all()
+        products_db = query.offset(skip).limit(limit).all()
+
+        products = [Product.from_orm(product) for product in products_db]
 
         logger.info(f"Found {len(products)} products")
-        return {
-            "total": total,
-            "products": products,
-            "skip": skip,
-            "limit": limit
-        }
+        return ProductList(
+            total=total,
+            products=products,
+            skip=skip,
+            limit=limit
+        )
     except Exception as e:
         logger.error(f"Error listing products: {str(e)}")
         raise HTTPException(status_code=500, detail="Chyba při získávání produktů")
@@ -302,12 +312,26 @@ async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db)
 @app.put("/api/products/{product_id}", response_model=Product, tags=["Products"])
 async def update_product(product_id: str, product: Product, db: SessionLocal = Depends(get_db),
                          api_key: APIKey = Depends(get_api_key)):
-    db_product = get_product(product_id, db)
-    for key, value in product.dict().items():
-        setattr(db_product, key, value)
-    db.commit()
-    db.refresh(db_product)
-    return db_product
+    logger.info(f"Attempting to update product with ID: {product_id}")
+    try:
+        db_product = get_product(product_id, db)
+        for key, value in product.dict(exclude_unset=True).items():
+            setattr(db_product, key, value)
+        db.commit()
+        db.refresh(db_product)
+        logger.info(f"Product updated successfully: {product_id}")
+        return db_product
+    except SQLAlchemyError as e:
+        logger.error(f"Database error occurred while updating product {product_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while updating product {product_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+    except HTTPException as he:
+        logger.warning(f"Product not found: {product_id}")
+        raise he
 
 
 @app.post("/api/users/register", response_model=User, tags=["Users"])
