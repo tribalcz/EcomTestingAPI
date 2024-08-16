@@ -382,6 +382,34 @@ async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api
         created_at=order.created_at
     ) for order in orders]
 
+@app.patch("/api/orders/{order_id}/status", tags=["Orders"])
+async def update_order_status(order_id: str, status: OrderStatus, db: SessionLocal = Depends(get_db),
+                              api_key: APIKey = Depends(get_api_key)):
+    logger.info(f"Updating order status to: {status}")
+    try:
+        order = db.query(OrderDB).filter(OrderDB.id == order_id).first();
+        if order is None:
+            raise HTTPException(status_code=404, detail="Objednávka nenalezena")
+
+        order.status = status
+        db.commit()
+        db.refresh(order)
+
+        logger.info(f"Order status updated successfully: {order.id}")
+        return Order(
+            id=order.id,
+            user_id=order.user_id,
+            products=[p.id for p in order.products],
+            total_price=order.total_price,
+            status=order.status,
+            created_at=order.created_at
+        )
+    except Exception as e:
+        logger.error(f"Error updating order status: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Chyba při aktualizaci stavu objednávky")
+
+
 
 @app.get("/api/search/", response_model=List[Product], tags=["Default"])
 async def search_products(query: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
