@@ -1,6 +1,4 @@
-﻿from enum import unique
-
-from fastapi import FastAPI, HTTPException, Depends, status, Security, Request
+﻿from fastapi import FastAPI, HTTPException, Depends, status, Security, Request
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from sqlalchemy.exc import IntegrityError
@@ -8,8 +6,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlalchemy import create_engine, Column, Integer, String, Float, ForeignKey, Table, DateTime, Boolean
 from sqlalchemy import Enum as SQLAlchemyEnum
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship, lazyload
-from pydantic import BaseModel
+from sqlalchemy.orm import sessionmaker, relationship
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 from enum import Enum
