@@ -304,9 +304,17 @@ async def list_products(
 
 
 @app.get("/api/products/{product_id}", response_model=Product, tags=["Products"])
-async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db),
-                             api_key: APIKey = Depends(get_api_key)):
-    return get_product(product_id, db)
+async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+    logger.info(f"Fetching product details for product_id: {product_id}")
+    try:
+        product = get_product(product_id, db)
+        return product
+    except HTTPException as he:
+        logger.warning(f"Product not found: {product_id}")
+        raise he
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while fetching product details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.put("/api/products/{product_id}", response_model=Product, tags=["Products"])
@@ -336,32 +344,45 @@ async def update_product(product_id: str, product: Product, db: SessionLocal = D
 
 @app.post("/api/users/register", response_model=User, tags=["Users"])
 async def create_user(user: User, db: SessionLocal = Depends(get_db)):
-    token = generate_unique_token()
-
-    user_data = user.dict()
-    user_data['token'] = token  # Přidání tokenu do slovníku
-
-    db_user = UserDB(**user_data)
-    db.add(db_user)
+    logger.info(f"Attempting to create user: {user.username}")
     try:
+        token = generate_unique_token()
+        user_data = user.dict()
+        user_data['token'] = token
+        db_user = UserDB(**user_data)
+        db.add(db_user)
         db.commit()
         db.refresh(db_user)
+        logger.info(f"User created successfully: {db_user.id}")
+        return User(
+            id=db_user.id,
+            username=db_user.username,
+            email=db_user.email,
+            full_name=db_user.full_name,
+            token=db_user.token
+        )
     except IntegrityError:
+        logger.error(f"IntegrityError: User with username {user.username} or email {user.email} already exists")
         db.rollback()
         raise HTTPException(status_code=400, detail="Uživatel s tímto jménem nebo emailem již existuje")
-
-    return User(
-        id=db_user.id,
-        username=db_user.username,
-        email=db_user.email,
-        full_name=db_user.full_name,
-        token=db_user.token  # Přidání tokenu do odpovědi
-    )
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while creating user: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.get("/api/users/{user_id}", response_model=User, tags=["Users"])
 async def get_user_detail(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    return get_user(user_id, db)
+    logger.info(f"Fetching user details for user_id: {user_id}")
+    try:
+        user = get_user(user_id, db)
+        return user
+    except HTTPException as he:
+        logger.warning(f"User not found: {user_id}")
+        raise he
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while fetching user details: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
@@ -465,25 +486,46 @@ async def update_order_status(order_id: str, status: OrderStatus, db: SessionLoc
 
 @app.get("/api/search/", response_model=List[Product], tags=["Default"])
 async def search_products(query: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    return db.query(ProductDB).filter(
-        (ProductDB.name.ilike(f"%{query}%")) | (ProductDB.description.ilike(f"%{query}%"))
-    ).all()
+    logger.info(f"Searching products with query: {query}")
+    try:
+        products = db.query(ProductDB).filter(
+            (ProductDB.name.ilike(f"%{query}%")) | (ProductDB.description.ilike(f"%{query}%"))
+        ).all()
+        return [Product.from_orm(product) for product in products]
+    except Exception as e:
+        logger.error(f"Error searching products: {str(e)}")
+        raise HTTPException(status_code=500, detail="Chyba při vyhledávání produktů")
 
 
 @app.patch("/api/products/{product_id}/stock", tags=["Products"])
-async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depends(get_db),
-                       api_key: APIKey = Depends(get_api_key)):
-    product = get_product(product_id, db)
-    product.stock += quantity
-    if product.stock < 0:
-        product.stock = 0
-    db.commit()
-    return {"message": "Stav skladu aktualizován", "new_stock": product.stock}
+async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+    logger.info(f"Updating stock for product_id: {product_id}, quantity change: {quantity}")
+    try:
+        product = get_product(product_id, db)
+        product.stock += quantity
+        if product.stock < 0:
+            product.stock = 0
+        db.commit()
+        logger.info(f"Stock updated successfully for product_id: {product_id}, new stock: {product.stock}")
+        return {"message": "Stav skladu aktualizován", "new_stock": product.stock}
+    except HTTPException as he:
+        logger.warning(f"Product not found: {product_id}")
+        raise he
+    except Exception as e:
+        logger.error(f"Error updating stock: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Chyba při aktualizaci stavu skladu")
 
 
 @app.get("/api/categories/", tags=["Default"])
 async def list_categories(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    return [category[0] for category in db.query(ProductDB.category).distinct()]
+    logger.info("Fetching categories")
+    try:
+        categories = [category[0] for category in db.query(ProductDB.category).distinct()]
+        return categories
+    except Exception as e:
+        logger.error(f"Error fetching categories: {str(e)}")
+        raise HTTPException(status_code=500, detail="Chyba při získávání kategorií")
 
 
 @app.get("/api/logs", response_model=List[dict], tags=["Other"])
