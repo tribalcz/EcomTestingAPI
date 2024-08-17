@@ -851,7 +851,11 @@ async def renew_api_key(
     db.add(new_db_api_key)
     db.commit()
 
-    return {"api_key": new_api_key, "expires_at": expires_at}
+    return {
+        "api_key": new_api_key,
+        "expires_at": expires_at
+    }
+
 if __name__ == "__main__":
     import uvicorn
 
