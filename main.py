@@ -131,6 +131,11 @@ class ProductList(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class AvailabilityStatus(BaseModel):
+    is_available: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
 # Model pro uživatele
 class User(BaseModel):
     id: str
@@ -381,6 +386,31 @@ async def update_product(product_id: str, product: Product, db: SessionLocal = D
         logger.warning(f"Product not found: {product_id}")
         raise he
 
+@app.patch("/api/products/{product_id}/availability", response_model=Product, tags=["Products"])
+async def update_product_availability(
+    product_id: str,
+    status: AvailabilityStatus,
+    db: SessionLocal = Depends(get_db),
+    api_key: APIKey = Depends(get_api_key)
+):
+    try:
+        product = get_product(product_id, db)
+        product.is_available = status.is_available
+        db.commit()
+        db.refresh(product)
+        logger.info(f"Product availability updated: product_id={product_id}, is_available={status.is_available}")
+        return product
+    except HTTPException as he:
+        logger.warning(f"Failed to update product availability: {he.detail}")
+        raise he
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while updating product availability: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Interní chyba serveru při aktualizaci dostupnosti produktu")
+    except Exception as e:
+        logger.error(f"Unexpected error while updating product availability: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Neočekávaná chyba při aktualizaci dostupnosti produktu")
 
 @app.post("/api/users/register", response_model=User, tags=["Users"])
 async def create_user(user: User, db: SessionLocal = Depends(get_db)):
