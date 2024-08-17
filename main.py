@@ -319,16 +319,20 @@ async def create_product(product: Product, db: SessionLocal = Depends(get_db), a
 
 @app.get("/api/products/", response_model=ProductList, tags=["Products"])
 async def list_products(
-        skip: int = Query(0, ge=0),
-        limit: int = Query(10, ge=1, le=100),
-        category: Optional[str] = None,
-        db: SessionLocal = Depends(get_db),
-        api_key: APIKey = Depends(get_api_key)):
-    logger.info(f"Listing products with skip={skip}, limit={limit}, category={category}")
+    skip: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
+    category: Optional[str] = None,
+    include_unavailable: bool = Query(False, description="Zahrnout i nedostupné produkty"),
+    db: SessionLocal = Depends(get_db),
+    api_key: APIKey = Depends(get_api_key)
+):
+    logger.info(f"Listing products with skip={skip}, limit={limit}, category={category}, include_unavailable={include_unavailable}")
     try:
         query = db.query(ProductDB)
         if category:
             query = query.filter(ProductDB.category == category)
+        if not include_unavailable:
+            query = query.filter(ProductDB.is_available == True)
 
         total = query.count()
         products_db = query.offset(skip).limit(limit).all()
@@ -342,11 +346,12 @@ async def list_products(
             skip=skip,
             limit=limit
         )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while listing products: {str(e)}")
+        raise HTTPException(status_code=500, detail="Chyba při získávání produktů z databáze")
     except Exception as e:
-        logger.error(f"Error listing products: {str(e)}")
-        raise HTTPException(status_code=500, detail="Chyba při získávání produktů")
-
-
+        logger.error(f"Unexpected error while listing products: {str(e)}")
+        raise HTTPException(status_code=500, detail="Neočekávaná chyba při získávání produktů")
 
 @app.get("/api/products/{product_id}", response_model=Product, tags=["Products"])
 async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
