@@ -431,11 +431,24 @@ async def update_user_activation_status(
         db: SessionLocal = Depends(get_db),
         api_key: APIKey = Depends(get_api_key)
 ):
-    user = get_user(user_id, db)
-    user.is_activated = status.is_activated
-    db.commit()
-    db.refresh(user)
-    return user
+    try:
+        user = get_user(user_id, db)
+        user.is_activated = status.is_activated
+        db.commit()
+        db.refresh(user)
+        logger.info(f"User activation status updated: user_id={user_id}, is_activated={status.is_activated}")
+        return user
+    except HTTPException as he:
+        logger.warning(f"Failed to update user activation status: {he.detail}")
+        raise he
+    except SQLAlchemyError as e:
+        logger.error(f"Database error while updating user activation status: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Interní chyba serveru při aktualizaci stavu aktivace uživatele")
+    except Exception as e:
+        logger.error(f"Unexpected error while updating user activation status: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Neočekávaná chyba při aktualizaci stavu aktivace uživatele")
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
 async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
