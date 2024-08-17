@@ -417,6 +417,42 @@ async def update_product_availability(
         db.rollback()
         raise HTTPException(status_code=500, detail="Neočekávaná chyba při aktualizaci dostupnosti produktu")
 
+@app.delete("/api/products/{product_id}", tags=["Products"])
+async def delete_product(
+        product_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
+    logger.info(f"Attempting to delete product with ID: {product_id}")
+    try:
+        product = get_product(product_id, db)
+
+        order_with_product = db.query(OrderDB).filter(OrderDB.products.any(ProductDB.id == product_id)).count()
+
+        if order_with_product > 0:
+            logger.warning(f"Product with ID {product_id} cannot be deleted because it is associated with an order")
+            return {
+                "message": "Product cannot be deleted because it is associated with an order",
+                "suggestion": "Set product availability to False instead",
+                "order_count": order_with_product
+            }
+
+        db.delete(product)
+        db.commit()
+        logger.info(f"Product deleted successfully: {product_id}")
+        return {"message": f"Product {product_id} deleted successfully"}
+    except HTTPException as he:
+        logger.warning(f"Product not found: {product_id}")
+        raise he
+    except SQLAlchemyError as e:
+        logger.error(f"Database error occurred while deleting product {product_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while deleting product {product_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 @app.post("/api/users/register", response_model=User, tags=["Users"])
 async def create_user(user: User, db: SessionLocal = Depends(get_db)):
     logger.info(f"Attempting to create user: {user.username}")
