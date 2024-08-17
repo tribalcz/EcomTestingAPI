@@ -257,14 +257,14 @@ async def get_api_key(api_key_header: str = Security(api_key_header), db: Sessio
 def get_product(product_id: str, db: SessionLocal):
     product = db.query(ProductDB).filter(ProductDB.id == product_id).first()
     if product is None:
-        raise HTTPException(status_code=404, detail="Produkt nenalezen")
+        raise HTTPException(status_code=404, detail="Produkt not found")
     return product
 
 
 def get_user(user_id: str, db: SessionLocal):
     user = db.query(UserDB).filter(UserDB.id == user_id).first()
     if user is None:
-        raise HTTPException(status_code=404, detail="Uživatel nenalezen")
+        raise HTTPException(status_code=404, detail="User not found")
     return user
 
 def generate_unique_token():
@@ -520,6 +520,42 @@ async def update_user_activation_status(
         logger.error(f"Unexpected error while updating user activation status: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail="Neočekávaná chyba při aktualizaci stavu aktivace uživatele")
+
+@app.delete("/api/users/{user_id}", tags=["Users"])
+async def delete_user(
+        user_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
+    logger.info(f"Attempting to delete user with ID: {user_id}")
+    try:
+        user = get_user(user_id, db)
+        user_order_counts = db.query(OrderDB).filter(OrderDB.user_id == user_id).count()
+
+        if user_order_counts > 0:
+            logger.warning(f"User with ID {user_id} cannot be deleted because it has associated orders")
+            return {
+                "message": "User cannot be deleted because it has associated orders",
+                "suggestion": "Deactivate user instead",
+                "order_count": user_order_counts
+            }
+
+        db.delete(user)
+        db.commit()
+        logger.info(f"User deleted successfully: {user_id}")
+        return {"message": f"User {user_id} deleted successfully"}
+    except HTTPException as he:
+        logger.warning(f"User not found: {user_id}")
+        raise he
+    except SQLAlchemyError as e:
+        logger.error(f"Database error occurred while deleting user {user_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+    except Exception as e:
+        logger.error(f"Unexpected error occurred while deleting user {user_id}: {str(e)}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Internal server error")
+
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
 async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
