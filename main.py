@@ -141,6 +141,11 @@ class User(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class ActivationStatus(BaseModel):
+    is_activated: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
 # Model pro objednávku
 class Order(BaseModel):
     id: str
@@ -419,6 +424,18 @@ async def get_user_detail(user_id: str, db: SessionLocal = Depends(get_db), api_
         logger.error(f"Unexpected error occurred while fetching user details: {str(e)}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@app.patch("/api/users/{user_id}/activate", response_model=User, tags=["Users"])
+async def update_user_activation_status(
+        user_id: str,
+        status: ActivationStatus,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
+    user = get_user(user_id, db)
+    user.is_activated = status.is_activated
+    db.commit()
+    db.refresh(user)
+    return user
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
 async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
