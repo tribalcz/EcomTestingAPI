@@ -298,7 +298,11 @@ async def custom_swagger_ui_html():
 
 
 @app.post("/api/products/", response_model=Product, tags=["Products"])
-async def create_product(product: Product, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def create_product(
+        product: Product,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Attempting to create product: {product.name}")
     try:
         db_product = ProductDB(**product.dict())
@@ -354,7 +358,11 @@ async def list_products(
         raise HTTPException(status_code=500, detail="Neočekávaná chyba při získávání produktů")
 
 @app.get("/api/products/{product_id}", response_model=Product, tags=["Products"])
-async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def get_product_detail(
+        product_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Fetching product details for product_id: {product_id}")
     try:
         product = get_product(product_id, db)
@@ -368,8 +376,12 @@ async def get_product_detail(product_id: str, db: SessionLocal = Depends(get_db)
 
 
 @app.put("/api/products/{product_id}", response_model=Product, tags=["Products"])
-async def update_product(product_id: str, product: Product, db: SessionLocal = Depends(get_db),
-                         api_key: APIKey = Depends(get_api_key)):
+async def update_product(
+        product_id: str,
+        product: Product,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Attempting to update product with ID: {product_id}")
     try:
         db_product = get_product(product_id, db)
@@ -454,7 +466,10 @@ async def delete_product(
         raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/api/users/register", response_model=User, tags=["Users"])
-async def create_user(user: User, db: SessionLocal = Depends(get_db)):
+async def create_user(
+        user: User,
+        db: SessionLocal = Depends(get_db)
+):
     logger.info(f"Attempting to create user: {user.username}")
     try:
         token = generate_unique_token()
@@ -483,7 +498,11 @@ async def create_user(user: User, db: SessionLocal = Depends(get_db)):
 
 
 @app.get("/api/users/{user_id}", response_model=User, tags=["Users"])
-async def get_user_detail(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def get_user_detail(
+        user_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Fetching user details for user_id: {user_id}")
     try:
         user = get_user(user_id, db)
@@ -558,7 +577,11 @@ async def delete_user(
 
 
 @app.post("/api/orders/", response_model=Order, tags=["Orders"])
-async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def create_order(
+        order: Order,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Received order data: {order.dict()}")
     try:
         # Vytvoříme objekt objednávky
@@ -601,7 +624,11 @@ async def create_order(order: Order, db: SessionLocal = Depends(get_db), api_key
 
 
 @app.get("/api/orders/{order_id}", response_model=Order, tags=["Orders"])
-async def get_order_detail(order_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def get_order_detail(
+        order_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     order = db.query(OrderDB).filter(OrderDB.id == order_id).first()
     if order is None:
         raise HTTPException(status_code=404, detail="Objednávka nenalezena")
@@ -615,7 +642,11 @@ async def get_order_detail(order_id: str, db: SessionLocal = Depends(get_db), ap
     )
 
 @app.get("/api/users/{user_id}/orders/", response_model=List[Order], tags=["Orders"])
-async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def list_user_orders(
+        user_id: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     get_user(user_id, db)  # Ověření existence uživatele
     orders = db.query(OrderDB).filter(OrderDB.user_id == user_id).all()
     return [Order(
@@ -628,8 +659,12 @@ async def list_user_orders(user_id: str, db: SessionLocal = Depends(get_db), api
     ) for order in orders]
 
 @app.patch("/api/orders/{order_id}/status", tags=["Orders"])
-async def update_order_status(order_id: str, status: OrderStatus, db: SessionLocal = Depends(get_db),
-                              api_key: APIKey = Depends(get_api_key)):
+async def update_order_status(
+        order_id: str,
+        status: OrderStatus,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Updating order status to: {status}")
     try:
         order = db.query(OrderDB).filter(OrderDB.id == order_id).first();
@@ -657,7 +692,11 @@ async def update_order_status(order_id: str, status: OrderStatus, db: SessionLoc
 
 
 @app.get("/api/search/", response_model=List[Product], tags=["Default"])
-async def search_products(query: str, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def search_products(
+        query: str,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Searching products with query: {query}")
     try:
         products = db.query(ProductDB).filter(
@@ -670,7 +709,12 @@ async def search_products(query: str, db: SessionLocal = Depends(get_db), api_ke
 
 
 @app.patch("/api/products/{product_id}/stock", tags=["Products"])
-async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def update_stock(
+        product_id: str,
+        quantity: int,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info(f"Updating stock for product_id: {product_id}, quantity change: {quantity}")
     try:
         product = get_product(product_id, db)
@@ -690,7 +734,10 @@ async def update_stock(product_id: str, quantity: int, db: SessionLocal = Depend
 
 
 @app.get("/api/categories/", tags=["Default"])
-async def list_categories(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
+async def list_categories(
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     logger.info("Fetching categories")
     try:
         categories = [category[0] for category in db.query(ProductDB.category).distinct()]
@@ -701,7 +748,11 @@ async def list_categories(db: SessionLocal = Depends(get_db), api_key: APIKey = 
 
 
 @app.get("/api/logs", response_model=List[dict], tags=["Other"])
-async def get_logs(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends(get_api_key), limit: int = 100):
+async def get_logs(
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key),
+        limit: int = 100
+):
     logs = db.query(APILog).order_by(APILog.timestamp.desc()).limit(limit).all()
     return [
         {
@@ -717,7 +768,11 @@ async def get_logs(db: SessionLocal = Depends(get_db), api_key: APIKey = Depends
 
 
 @app.get("/api/test-api/test-api-key-hash", tags=["Test"])
-async def test_api_key_hash(request: Request, db: SessionLocal = Depends(get_db),  api_key: APIKey = Depends(get_api_key)):
+async def test_api_key_hash(
+        request: Request,
+        db: SessionLocal = Depends(get_db),
+        api_key: APIKey = Depends(get_api_key)
+):
     api_key = request.headers.get(API_KEY_NAME)
     hashed_key = hash_api_key(api_key)
 
@@ -746,7 +801,11 @@ async def test_api_key_hash(request: Request, db: SessionLocal = Depends(get_db)
 
 
 @app.post("/api/auth-token", tags=["Auth"])
-async def generate_auth_token(email: str, token: str, db: SessionLocal = Depends(get_db)):
+async def generate_auth_token(
+        email: str,
+        token: str,
+        db: SessionLocal = Depends(get_db)
+):
     user = db.query(UserDB).filter(UserDB.email == email, UserDB.token == token, UserDB.is_activated == True).first()
     if not user:
         raise HTTPException(status_code=400, detail="Neplatný email, token nebo uživatel není aktivován")
@@ -769,7 +828,10 @@ async def generate_auth_token(email: str, token: str, db: SessionLocal = Depends
     return {"api_key": new_api_key, "expires_at": expires_at}
 
 @app.post("/api/renew-api-key", tags=["Auth"])
-async def renew_api_key(current_api_key: str, db: SessionLocal = Depends(get_db)):
+async def renew_api_key(
+        current_api_key: str,
+        db: SessionLocal = Depends(get_db)
+):
     db_api_key = db.query(APIKeyDB).filter(APIKeyDB.key == current_api_key, APIKeyDB.is_active == True).first()
     if not db_api_key:
         raise HTTPException(status_code=400, detail="Neplatný API klíč")
