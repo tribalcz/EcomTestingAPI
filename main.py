@@ -220,12 +220,28 @@ def get_db():
 
 # Funkce pro ověření API klíče
 async def get_api_key(api_key_header: str = Security(api_key_header), db: SessionLocal = Depends(get_db)):
-    if is_valid_api_key(api_key_header, db):
-        return api_key_header
-    else:
+    if not is_valid_api_key(api_key_header, db):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Neplatný nebo expirovaný API klíč"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Neplatný nebo expirovaný API klíč"
         )
+
+        # Ověření, zda je uživatelský účet aktivní
+    api_key_db = db.query(APIKeyDB).filter(APIKeyDB.key == api_key_header).first()
+    if not api_key_db:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API klíč nenalezen"
+        )
+
+    user = db.query(UserDB).filter(UserDB.id == api_key_db.user_id).first()
+    if not user or not user.is_activated:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Uživatelský účet není aktivní"
+        )
+
+    return api_key_header
 
 # Pomocné funkce
 def get_product(product_id: str, db: SessionLocal):
