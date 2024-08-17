@@ -9,7 +9,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 import uuid
 import hashlib
@@ -69,8 +69,6 @@ class UserDB(Base, TimestampMixin):
     token = Column(String, unique=True, index=True)
     is_activated = Column(Boolean, default=True)
 
-
-
 class OrderDB(Base, TimestampMixin):
     __tablename__ = "orders"
 
@@ -81,7 +79,6 @@ class OrderDB(Base, TimestampMixin):
 
     user = relationship("UserDB")
     products = relationship("ProductDB", secondary=order_products)
-
 
 class APILog(Base):
     __tablename__ = "api_logs"
@@ -97,6 +94,16 @@ class APILog(Base):
     api_key = Column(String, nullable=True)
     is_successful = Column(Boolean)
 
+class APIKeyDB(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(String, primary_key=True, index=True)
+    user_id = Column(String, ForeignKey("users.id"))
+    key = Column(String, unique=True, index=True)
+    is_active = Column(Boolean, default=True)
+    expires_at = Column(DateTime)
+
+    user = relationship("UserDB")
 
 # Vytvoření tabulek
 Base.metadata.create_all(bind=engine)
@@ -203,16 +210,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(LoggingMiddleware)
 
 
-# Funkce pro ověření API klíče
-async def get_api_key(api_key_header: str = Security(api_key_header)):
-    if api_key_header == API_KEY:
-        return api_key_header
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Neplatný nebo chybějící API klíč"
-        )
-
-
 # Dependency
 def get_db():
     db = SessionLocal()
@@ -221,6 +218,14 @@ def get_db():
     finally:
         db.close()
 
+# Funkce pro ověření API klíče
+async def get_api_key(api_key_header: str = Security(api_key_header), db: SessionLocal = Depends(get_db)):
+    if is_valid_api_key(api_key_header, db):
+        return api_key_header
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Neplatný nebo expirovaný API klíč"
+        )
 
 # Pomocné funkce
 def get_product(product_id: str, db: SessionLocal):
@@ -238,6 +243,20 @@ def get_user(user_id: str, db: SessionLocal):
 
 def generate_unique_token():
     return secrets.token_urlsafe(32)
+
+def generate_api_key():
+    return secrets.token_urlsafe(32)
+
+def is_valid_api_key(api_key: str, db: SessionLocal) -> bool:
+    logger.info(f"Validating API key: {api_key}")
+    try:
+        db_api_key = db.query(APIKeyDB).filter(APIKeyDB.key == api_key, APIKeyDB.is_active == True).first()
+        if db_api_key and db_api_key.expires_at > datetime.utcnow():
+            return True
+        return False
+    except Exception as e:
+        logger.error(f"Error validating API key: {str(e)}")
+        return False
 
 # API endpointy
 
@@ -572,6 +591,52 @@ async def test_api_key_hash(request: Request, db: SessionLocal = Depends(get_db)
         "stored_in_db": last_log.api_key
     }
 
+
+@app.post("/api/auth-token", tags=["Auth"])
+async def generate_auth_token(email: str, token: str, db: SessionLocal = Depends(get_db)):
+    user = db.query(UserDB).filter(UserDB.email == email, UserDB.token == token, UserDB.is_activated == True).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Neplatný email, token nebo uživatel není aktivován")
+
+    # Deaktivujte všechny staré API klíče uživatele
+    db.query(APIKeyDB).filter(APIKeyDB.user_id == user.id).update({"is_active": False})
+
+    # Vytvořte nový API klíč
+    new_api_key = generate_api_key()
+    expires_at = datetime.utcnow() + timedelta(hours=72)
+    db_api_key = APIKeyDB(
+        id=str(uuid.uuid4()),
+        user_id=user.id,
+        key=new_api_key,
+        expires_at=expires_at
+    )
+    db.add(db_api_key)
+    db.commit()
+
+    return {"api_key": new_api_key, "expires_at": expires_at}
+
+@app.post("/api/renew-api-key", tags=["Auth"])
+async def renew_api_key(current_api_key: str, db: SessionLocal = Depends(get_db)):
+    db_api_key = db.query(APIKeyDB).filter(APIKeyDB.key == current_api_key, APIKeyDB.is_active == True).first()
+    if not db_api_key:
+        raise HTTPException(status_code=400, detail="Neplatný API klíč")
+
+    # Deaktivujte současný API klíč
+    db_api_key.is_active = False
+
+    # Vytvořte nový API klíč
+    new_api_key = generate_api_key()
+    expires_at = datetime.utcnow() + timedelta(hours=72)
+    new_db_api_key = APIKeyDB(
+        id=str(uuid.uuid4()),
+        user_id=db_api_key.user_id,
+        key=new_api_key,
+        expires_at=expires_at
+    )
+    db.add(new_db_api_key)
+    db.commit()
+
+    return {"api_key": new_api_key, "expires_at": expires_at}
 if __name__ == "__main__":
     import uvicorn
 
